@@ -1,9 +1,13 @@
 // api/axios.instance.js
 import axios from "axios";
 
+const normalizeBaseURL = (url) => String(url || "").replace(/\/+$/, "");
+
 const defaultAdminBaseURL =
   import.meta.env.VITE_ADMIN_API_BASE_URL ||
-  "https://mozno-server.vercel.app/api/admin";
+  (import.meta.env.VITE_API_URL
+    ? `${normalizeBaseURL(import.meta.env.VITE_API_URL)}/api/admin`
+    : "https://mozno-server.vercel.app/api/admin");
 
 const adminClient = axios.create({
   baseURL: defaultAdminBaseURL,
@@ -26,6 +30,25 @@ adminClient.interceptors.request.use(
     return config;
   },
   (error) => {
+    return Promise.reject(error);
+  },
+);
+
+adminClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("token");
+      sessionStorage.removeItem("token");
+
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname !== "/login"
+      ) {
+        window.location.assign("/login");
+      }
+    }
+
     return Promise.reject(error);
   },
 );

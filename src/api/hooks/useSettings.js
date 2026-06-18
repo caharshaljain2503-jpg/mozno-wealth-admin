@@ -8,13 +8,31 @@ export const settingsKeys = {
   settings: () => [...settingsKeys.all, 'settings'],
 };
 
+const DEFAULT_MAP_LINK = 'https://maps.app.goo.gl/STjHCGiRPECf3hJR6?g_st=ac';
+const LEGACY_DEFAULT_MAP_LINK = 'https://maps.app.goo.gl/VQSp7vAJ3kTvGcW47';
+
+const normalizeSettings = (settings) => {
+  if (!settings) return settings;
+
+  const mapLink = settings.contactInfo?.mapLink;
+  if (mapLink && mapLink !== LEGACY_DEFAULT_MAP_LINK) return settings;
+
+  return {
+    ...settings,
+    contactInfo: {
+      ...settings.contactInfo,
+      mapLink: DEFAULT_MAP_LINK,
+    },
+  };
+};
+
 // Get settings
 export const useSettings = () => {
   return useQuery({
     queryKey: settingsKeys.settings(),
     queryFn: async () => {
       const response = await apiClient.get('/settings');
-      return response.data.settings;
+      return normalizeSettings(response.data.settings);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -54,7 +72,8 @@ export const defaultSettings = {
     email: 'contact@mozno.in',
     whatsapp: 'https://wa.me/919820507696',
     address: '106, Shyamkamal \'C\' Building, Agarwal Market, Vile Parle East, Mumbai - 400 057',
-    mapLink: 'https://maps.app.goo.gl/VQSp7vAJ3kTvGcW47',
+    mapLink: DEFAULT_MAP_LINK,
+    mapEmbedUrl: '',
   },
   googleAnalyticsId: '',
   socialLinks: {

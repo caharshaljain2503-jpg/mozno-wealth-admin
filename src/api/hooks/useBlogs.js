@@ -70,6 +70,7 @@ export const useAllComments = (options = {}) => {
 // Add new blog
 export const useAddBlog = (options = {}) => {
   const queryClient = useQueryClient();
+  const { onSuccess, ...mutationOptions } = options;
 
   return useMutation({
     mutationFn: async (formData) => {
@@ -78,64 +79,76 @@ export const useAddBlog = (options = {}) => {
       });
       return res.data.blog;
     },
-    onSuccess: () => {
+    onSuccess: (data, variables, context) => {
       queryClient.invalidateQueries({ queryKey: blogKeys.lists() });
+      onSuccess?.(data, variables, context);
     },
-    ...options,
+    ...mutationOptions,
   });
 };
 
 // Edit blog
 export const useEditBlog = (options = {}) => {
   const queryClient = useQueryClient();
+  const { onSuccess, ...mutationOptions } = options;
 
   return useMutation({
     mutationFn: async ({ blogId, formData }) => {
-      const res = await adminClient.patch(`/edit/${blogId}`, formData, {
+      const res = await adminClient.patch(`/blogs/${blogId}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       return res.data.blog;
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (data, variables, context) => {
       queryClient.invalidateQueries({ queryKey: blogKeys.lists() });
       queryClient.invalidateQueries({
         queryKey: blogKeys.detail(variables.blogId),
       });
+      onSuccess?.(data, variables, context);
     },
-    ...options,
+    ...mutationOptions,
   });
 };
 
 // Toggle blog visibility (publish/draft)
 export const useToggleBlogVisibility = (options = {}) => {
   const queryClient = useQueryClient();
+  const { onSuccess, ...mutationOptions } = options;
 
   return useMutation({
     mutationFn: async (blogId) => {
-      const res = await adminClient.patch(`/toggle-visibility/${blogId}`);
+      const res = await adminClient.patch(`/blogs/${blogId}/visibility`);
       return res.data.blog;
     },
-    onSuccess: (data, blogId) => {
+    onSuccess: (data, blogId, context) => {
       queryClient.invalidateQueries({ queryKey: blogKeys.lists() });
       queryClient.invalidateQueries({ queryKey: blogKeys.detail(blogId) });
+      onSuccess?.(data, blogId, context);
     },
-    ...options,
+    ...mutationOptions,
   });
 };
 
 // Delete blog
 export const useDeleteBlog = (options = {}) => {
   const queryClient = useQueryClient();
+  const { onSuccess, ...mutationOptions } = options;
 
   return useMutation({
     mutationFn: async (blogId) => {
-      const res = await adminClient.delete(`/delete/${blogId}`);
+      const res = await adminClient.delete(`/blogs/${blogId}`);
       return res.data.blog;
     },
-    onSuccess: () => {
+    onSuccess: (data, blogId, context) => {
+      queryClient.setQueryData(blogKeys.lists(), (oldBlogs) => {
+        if (!Array.isArray(oldBlogs)) return oldBlogs;
+        return oldBlogs.filter((blog) => blog._id !== blogId);
+      });
       queryClient.invalidateQueries({ queryKey: blogKeys.lists() });
+      queryClient.removeQueries({ queryKey: blogKeys.detail(blogId) });
+      onSuccess?.(data, blogId, context);
     },
-    ...options,
+    ...mutationOptions,
   });
 };
 

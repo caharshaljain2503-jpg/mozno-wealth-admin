@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
@@ -42,9 +43,88 @@ import {
   ExternalLink,
   MoreHorizontal,
   Maximize2,
+  Table2,
 } from "lucide-react";
 
 const lowlight = createLowlight(common);
+const MAX_INLINE_IMAGE_SIZE = 5 * 1024 * 1024;
+
+const TableCell = Node.create({
+  name: "tableCell",
+  content: "block+",
+  tableRole: "cell",
+  parseHTML() {
+    return [{ tag: "td" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "td",
+      mergeAttributes(HTMLAttributes, {
+        class: "border border-gray-300 px-3 py-2 align-top",
+      }),
+      0,
+    ];
+  },
+});
+
+const TableRow = Node.create({
+  name: "tableRow",
+  content: "tableCell+",
+  tableRole: "row",
+  parseHTML() {
+    return [{ tag: "tr" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["tr", mergeAttributes(HTMLAttributes), 0];
+  },
+});
+
+const Table = Node.create({
+  name: "table",
+  group: "block",
+  content: "tableRow+",
+  tableRole: "table",
+  isolating: true,
+  parseHTML() {
+    return [{ tag: "table" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "table",
+      mergeAttributes(HTMLAttributes, {
+        class: "my-6 w-full border-collapse border border-gray-300 text-sm",
+      }),
+      ["tbody", 0],
+    ];
+  },
+  addCommands() {
+    return {
+      insertBasicTable:
+        () =>
+        ({ commands }) =>
+          commands.insertContent(`
+            <table>
+              <tr><td><p></p></td><td><p></p></td><td><p></p></td></tr>
+              <tr><td><p></p></td><td><p></p></td><td><p></p></td></tr>
+              <tr><td><p></p></td><td><p></p></td><td><p></p></td></tr>
+            </table>
+          `),
+      insertCustomTable:
+        ({ rows = 3, columns = 3 } = {}) =>
+        ({ commands }) => {
+          const safeRows = Math.min(Math.max(Number(rows) || 3, 1), 12);
+          const safeColumns = Math.min(Math.max(Number(columns) || 3, 1), 8);
+          const cells = Array.from({ length: safeColumns }, () => "<td><p></p></td>").join("");
+          const tableRows = Array.from(
+            { length: safeRows },
+            () => `<tr>${cells}</tr>`,
+          ).join("");
+
+          return commands.insertContent(`<table>${tableRows}</table>`);
+        },
+    };
+  },
+});
 
 const TextEditor = ({
   value,
@@ -64,6 +144,8 @@ const TextEditor = ({
   const [headingDropdownOpen, setHeadingDropdownOpen] = useState(false);
   const [alignDropdownOpen, setAlignDropdownOpen] = useState(false);
   const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableColumns, setTableColumns] = useState(3);
 
   const editor = useEditor({
     extensions: [
@@ -88,6 +170,9 @@ const TextEditor = ({
           class: "rounded-lg max-w-full h-auto mx-auto my-4 shadow-md",
         },
       }),
+      Table,
+      TableRow,
+      TableCell,
       Placeholder.configure({
         placeholder,
         emptyEditorClass: "is-editor-empty",
@@ -176,6 +261,49 @@ const TextEditor = ({
     }
   }, [editor, imageUrl, imageAlt]);
 
+  const handleImageFileChange = useCallback(
+    (event) => {
+      const file = event.target.files?.[0];
+      if (!file || !editor) return;
+
+      if (!file.type.startsWith("image/")) {
+        alert("Please choose an image file.");
+        event.target.value = "";
+        return;
+      }
+
+      if (file.size > MAX_INLINE_IMAGE_SIZE) {
+        alert("Inline image size should be less than 5MB.");
+        event.target.value = "";
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        editor
+          .chain()
+          .focus()
+          .setImage({
+            src: reader.result,
+            alt: file.name || "Image",
+          })
+          .run();
+        event.target.value = "";
+        setImageOpen(false);
+      };
+      reader.readAsDataURL(file);
+    },
+    [editor],
+  );
+
+  const handleInsertTable = useCallback(() => {
+    editor
+      ?.chain()
+      .focus()
+      .insertCustomTable({ rows: tableRows, columns: tableColumns })
+      .run();
+  }, [editor, tableColumns, tableRows]);
+
   useEffect(() => {
     if (editor?.isActive("link")) {
       const href = editor.getAttributes("link").href;
@@ -221,6 +349,61 @@ const TextEditor = ({
           isFullscreen ? "fixed inset-4 z-50 flex flex-col shadow-2xl" : ""
         } ${disabled ? "opacity-60 pointer-events-none" : ""}`}
       >
+        <div className="flex flex-col gap-3 border-b border-gray-200 bg-white px-3 py-3 sm:flex-row sm:items-end sm:justify-between sm:px-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+              <Table2 className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">
+                Insert Table
+              </p>
+              <p className="text-xs text-gray-500">
+                Choose rows and columns, then add the table to your content.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+            <label className="space-y-1">
+              <span className="block text-xs font-medium text-gray-600">
+                Rows
+              </span>
+              <input
+                type="number"
+                min="1"
+                max="12"
+                value={tableRows}
+                onChange={(e) => setTableRows(e.target.value)}
+                disabled={disabled}
+                className="h-9 w-full rounded-lg border border-gray-300 bg-white px-2 text-sm text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="block text-xs font-medium text-gray-600">
+                Columns
+              </span>
+              <input
+                type="number"
+                min="1"
+                max="8"
+                value={tableColumns}
+                onChange={(e) => setTableColumns(e.target.value)}
+                disabled={disabled}
+                className="h-9 w-full rounded-lg border border-gray-300 bg-white px-2 text-sm text-gray-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleInsertTable}
+              disabled={disabled}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
+            >
+              <Table2 className="h-4 w-4" />
+              Insert
+            </button>
+          </div>
+        </div>
+
         {/* Toolbar */}
         <div className="sticky top-0 z-20 bg-gray-50 border-b border-gray-200">
           <div className="flex flex-wrap items-center gap-0.5 p-1.5 sm:p-2">
@@ -460,6 +643,7 @@ const TextEditor = ({
               <div className="relative dropdown-container">
                 <button
                   onClick={() => setLinkOpen(!linkOpen)}
+                  title="Add Link"
                   className={`inline-flex items-center justify-center rounded-md h-8 w-8 transition-all duration-200 text-gray-600 hover:bg-gray-100 hover:text-gray-900 active:scale-95 ${
                     editor.isActive("link") ? "bg-gray-100 text-gray-900" : ""
                   }`}
@@ -519,6 +703,7 @@ const TextEditor = ({
               <div className="relative dropdown-container">
                 <button
                   onClick={() => setImageOpen(!imageOpen)}
+                  title="Insert Image"
                   className="inline-flex items-center justify-center rounded-md h-8 w-8 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200 active:scale-95"
                 >
                   <ImageIcon className="h-4 w-4" />
@@ -557,13 +742,31 @@ const TextEditor = ({
                         className="w-full inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-all duration-200"
                       >
                         <Upload className="h-4 w-4 mr-1" />
-                        Insert Image
+                        Insert Image URL
                       </button>
+                      <label className="w-full inline-flex cursor-pointer items-center justify-center px-3 py-1.5 text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 rounded-md transition-all duration-200">
+                        <Upload className="h-4 w-4 mr-1" />
+                        Upload Inline Image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageFileChange}
+                          className="hidden"
+                        />
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        Uploaded inline images are saved inside the blog content.
+                      </p>
                     </div>
                   </div>
                 )}
               </div>
 
+              <ToolbarButton
+                onClick={() => editor.chain().focus().insertBasicTable().run()}
+                icon={<Table2 className="h-4 w-4" />}
+                title="Insert 3x3 Table"
+              />
               <ToolbarButton
                 onClick={() => editor.chain().focus().toggleBlockquote().run()}
                 isActive={editor.isActive("blockquote")}

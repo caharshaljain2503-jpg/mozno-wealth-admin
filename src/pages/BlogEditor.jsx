@@ -22,6 +22,7 @@ import {
   Search,
   Type,
   AlignLeft,
+  User,
 } from "lucide-react";
 import {
   useAddBlog,
@@ -29,16 +30,56 @@ import {
   useAdminBlogById,
   useToggleBlogVisibility,
 } from "../api/hooks/useBlogs";
+import { useAdmins } from "../api/hooks/useAdmin";
 import TextEditor from "../components/TextEditor";
 
 const CATEGORIES = [
-  "All",
-  "Tech",
-  "E-commerce",
-  "Social Media",
-  "Digital Marketing",
+  "Product Info",
+  "Price Updates",
+  "Technical Guides",
+  "Market Insights",
+  "Personal Finance",
+  "Tax Planning",
+  "Investments",
+  "Insurance",
+  "Retirement",
+  "Succession",
+  "Wealth Management",
   "Other",
 ];
+
+const stripHtml = (html = "") =>
+  String(html)
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const PLACEHOLDER_PHRASES = [
+  "write and publish amazing content",
+  "start writing your amazing content",
+  "your blog content preview",
+];
+
+const createBlogTemplate = (title, category) => `
+  <h2>Introduction</h2>
+  <p>Start with the reader's problem or question. Explain why this topic matters and what they will understand by the end of the article.</p>
+  <h2>Key Takeaways</h2>
+  <ul>
+    <li>Share the first practical takeaway for the reader.</li>
+    <li>Add a second point that connects to ${category || "the selected category"}.</li>
+    <li>Include one action the reader can take next.</li>
+  </ul>
+  <h2>${title || "Main Topic"} Explained</h2>
+  <p>Write the main explanation here. Keep paragraphs short, use examples, and avoid placing the whole article inside a table.</p>
+  <h3>What readers should watch for</h3>
+  <p>Add risks, common mistakes, or important details that help the article feel useful and complete.</p>
+  <h2>Conclusion</h2>
+  <p>Close with a clear summary and a simple next step for the reader.</p>
+`;
 
 const BlogEditor = () => {
   const { id } = useParams();
@@ -47,21 +88,42 @@ const BlogEditor = () => {
 
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
+  const [showWebsitePreview, setShowWebsitePreview] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
     subTitle: "",
+    paragraph: "",
     description: "",
     category: "",
+    author: "",
     isPublished: false,
     image: null,
   });
+
+  const getAuthorName = (author) => {
+    if (!author || typeof author !== "object") return "Admin";
+    const fullName = [author.firstName, author.lastName].filter(Boolean).join(" ");
+    return fullName || author.name || author.email || "Admin";
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "Not set";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const getErrorMessage = (error, fallback) =>
+    error?.response?.data?.message || error?.message || fallback;
 
   // React Query Hooks
   const addBlog = useAddBlog({
     onSuccess: () => navigate("/blogs"),
     onError: (error) => {
       console.error("Failed to create blog:", error);
-      alert(error?.message || "Failed to create blog. Please try again.");
+      alert(getErrorMessage(error, "Failed to create blog. Please try again."));
     },
   });
 
@@ -69,7 +131,7 @@ const BlogEditor = () => {
     onSuccess: () => navigate("/blogs"),
     onError: (error) => {
       console.error("Failed to update blog:", error);
-      alert(error?.message || "Failed to update blog. Please try again.");
+      alert(getErrorMessage(error, "Failed to update blog. Please try again."));
     },
   });
 
@@ -90,6 +152,18 @@ const BlogEditor = () => {
   } = useAdminBlogById(id, {
     enabled: isEditing,
   });
+  const { data: adminsResponse } = useAdmins({ limit: 100 });
+  const admins = adminsResponse?.data || [];
+  const selectedAuthor =
+    admins.find((admin) => (admin._id || admin.id) === formData.author) ||
+    blog?.author;
+  const plainContent = stripHtml(formData.description);
+  const articleText = [formData.paragraph, plainContent]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const contentWords = articleText ? articleText.split(/\s+/).length : 0;
+  const estimatedReadTime = Math.max(1, Math.ceil(contentWords / 180));
 
   useEffect(() => {
     if (blog && isEditing) {
@@ -97,8 +171,10 @@ const BlogEditor = () => {
         ...prev,
         title: blog.title || "",
         subTitle: blog.subTitle || "",
+        paragraph: blog.paragraph || "",
         description: blog.description || "",
         category: blog.category || "",
+        author: blog.author?._id || blog.author?.id || "",
         isPublished: blog.isPublished ?? false,
         image: null,
       }));
@@ -116,6 +192,20 @@ const BlogEditor = () => {
 
   const handleEditorChange = (content) => {
     setFormData((prev) => ({ ...prev, description: content }));
+  };
+
+  const handleUseTemplate = () => {
+    if (
+      plainContent &&
+      !window.confirm("Replace the current article content with the blog template?")
+    ) {
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      description: createBlogTemplate(prev.title, prev.category),
+    }));
   };
 
   const handleImageUpload = async (e) => {
@@ -154,6 +244,11 @@ const BlogEditor = () => {
   };
 
   const handleSubmit = (publish) => {
+    const cleanContent = stripHtml(formData.description);
+    const hasPlaceholderContent = PLACEHOLDER_PHRASES.some((phrase) =>
+      cleanContent.toLowerCase().includes(phrase),
+    );
+
     if (!formData.title?.trim()) {
       alert("Title is required");
       return;
@@ -166,12 +261,20 @@ const BlogEditor = () => {
       alert("Title must be less than 150 characters");
       return;
     }
-    if (!formData.description?.trim()) {
+    if (!formData.subTitle?.trim()) {
+      alert("Summary is required. It appears on blog cards and search previews.");
+      return;
+    }
+    if (!formData.paragraph?.trim()) {
+      alert("Opening paragraph is required.");
+      return;
+    }
+    if (!cleanContent) {
       alert("Content is required");
       return;
     }
-    if (formData.description.length < 10) {
-      alert("Content must be at least 10 characters");
+    if (publish && hasPlaceholderContent) {
+      alert("Please replace the placeholder/sample content before publishing.");
       return;
     }
     if (!formData.category) {
@@ -182,18 +285,16 @@ const BlogEditor = () => {
       alert("Featured image is required");
       return;
     }
-    if (formData.subTitle && formData.subTitle.length > 200) {
-      alert("Subtitle must be less than 200 characters");
-      return;
-    }
 
     const formDataToSend = new FormData();
     formDataToSend.append("title", formData.title.trim());
-    if (formData.subTitle?.trim()) {
-      formDataToSend.append("subTitle", formData.subTitle.trim());
-    }
+    formDataToSend.append("subTitle", formData.subTitle.trim());
+    formDataToSend.append("paragraph", formData.paragraph.trim());
     formDataToSend.append("description", formData.description.trim());
     formDataToSend.append("category", formData.category);
+    if (formData.author) {
+      formDataToSend.append("author", formData.author);
+    }
     formDataToSend.append("isPublished", publish.toString());
     if (formData.image) {
       formDataToSend.append("image", formData.image);
@@ -213,6 +314,33 @@ const BlogEditor = () => {
 
   const isSaving = addBlog.isPending || editBlog.isPending;
   const isToggling = toggleVisibility.isPending;
+  const qualityChecks = [
+    {
+      label: "Clear title",
+      passed:
+        formData.title.trim().length >= 3 && formData.title.trim().length <= 150,
+    },
+    {
+      label: "Card summary",
+      passed: Boolean(formData.subTitle.trim()),
+    },
+    {
+      label: "Opening paragraph",
+      passed: Boolean(formData.paragraph.trim()),
+    },
+    {
+      label: "Featured image",
+      passed: Boolean(previewImage || formData.image),
+    },
+    {
+      label: "Category selected",
+      passed: Boolean(formData.category),
+    },
+    {
+      label: "Article body",
+      passed: Boolean(plainContent),
+    },
+  ];
 
   // Loading State
   if (isLoading) {
@@ -298,6 +426,15 @@ const BlogEditor = () => {
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => setShowWebsitePreview(true)}
+              disabled={isSaving}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+            >
+              <Eye className="w-4 h-4" />
+              <span>Website Preview</span>
+            </button>
+
             {isEditing && blog?.slug && (
               <button
                 onClick={() => window.open(`/blog/${blog.slug}`, "_blank")}
@@ -305,7 +442,7 @@ const BlogEditor = () => {
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
               >
                 <ExternalLink className="w-4 h-4" />
-                <span>Preview</span>
+                <span>Open Live</span>
               </button>
             )}
 
@@ -329,7 +466,7 @@ const BlogEditor = () => {
                 ) : (
                   <>
                     <Lock className="w-4 h-4" />
-                    <span>Draft</span>
+                    <span>Unpublished</span>
                   </>
                 )}
               </button>
@@ -346,7 +483,7 @@ const BlogEditor = () => {
                 ) : (
                   <Save className="w-4 h-4" />
                 )}
-                <span>Save Draft</span>
+                <span>{isEditing && formData.isPublished ? "Unpublish" : "Save Draft"}</span>
               </button>
 
               <button
@@ -359,7 +496,13 @@ const BlogEditor = () => {
                 ) : (
                   <Globe className="w-4 h-4" />
                 )}
-                <span>{isEditing ? "Update" : "Publish"}</span>
+                <span>
+                  {isEditing
+                    ? formData.isPublished
+                      ? "Update Published"
+                      : "Publish"
+                    : "Publish"}
+                </span>
               </button>
             </div>
           </div>
@@ -414,8 +557,10 @@ const BlogEditor = () => {
                   <AlignLeft className="w-5 h-5 text-purple-600" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-800">Subtitle</h3>
-                  <p className="text-xs text-slate-500">Optional • Brief description</p>
+                  <h3 className="font-semibold text-slate-800">Summary</h3>
+                  <p className="text-xs text-slate-500">
+                    Required • Shown on website cards
+                  </p>
                 </div>
               </div>
             </div>
@@ -425,20 +570,55 @@ const BlogEditor = () => {
                   name="subTitle"
                   value={formData.subTitle}
                   onChange={handleInputChange}
-                  placeholder="Add a brief subtitle or tagline..."
+                  placeholder="Write a useful 1-2 line summary for readers..."
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 focus:bg-white transition-all placeholder:text-slate-400"
                   disabled={isSaving}
-                  maxLength={200}
                 />
-                {formData.subTitle && (
-                  <div className="flex justify-end px-1">
-                    <span className={`text-xs font-medium ${
-                      formData.subTitle.length > 180 ? "text-amber-500" : "text-slate-400"
-                    }`}>
-                      {formData.subTitle.length}/200
-                    </span>
-                  </div>
-                )}
+                <div className="flex justify-between px-1">
+                  <span className="text-xs text-slate-400">
+                    Required • no character limit
+                  </span>
+                  <span className="text-xs font-medium text-slate-400">
+                    {formData.subTitle.length} characters
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Opening Paragraph Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 sm:p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                  <AlignLeft className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-800">Opening Paragraph</h3>
+                  <p className="text-xs text-slate-500">
+                    Required • First paragraph shown in the article
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 sm:p-6">
+              <div className="space-y-2">
+                <textarea
+                  name="paragraph"
+                  value={formData.paragraph}
+                  onChange={handleInputChange}
+                  placeholder="Write the first real paragraph of the blog here..."
+                  className="min-h-32 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base leading-7 text-slate-800 transition-all placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  disabled={isSaving}
+                />
+                <div className="flex justify-between px-1">
+                  <span className="text-xs text-slate-400">
+                    Required • no character limit
+                  </span>
+                  <span className="text-xs font-medium text-slate-400">
+                    {formData.paragraph.length} characters
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -450,21 +630,47 @@ const BlogEditor = () => {
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
                   <FileText className="w-5 h-5 text-white" />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <h3 className="font-semibold text-slate-800">Content</h3>
-                  <p className="text-xs text-slate-500">Write your blog post content</p>
+                  <p className="text-xs text-slate-500">
+                    Use headings, short paragraphs, lists, links, and inline images
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleUseTemplate}
+                  disabled={isSaving}
+                  className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-violet-100 px-3 py-2 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-200 disabled:opacity-50"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Use Blog Template
+                </button>
               </div>
             </div>
             <div className="p-4 sm:p-6">
+              <button
+                type="button"
+                onClick={handleUseTemplate}
+                disabled={isSaving}
+                className="mb-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-100 px-3 py-2.5 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-200 disabled:opacity-50 sm:hidden"
+              >
+                <Sparkles className="h-4 w-4" />
+                Use Blog Template
+              </button>
               <TextEditor
                 value={formData.description || ""}
                 onChange={handleEditorChange}
                 minHeight="350px"
                 maxHeight="500px"
-                placeholder="Start writing your amazing content here..."
+                placeholder="Write the full article here. Use headings, short paragraphs, and lists for a readable blog."
                 disabled={isSaving}
               />
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <span>{contentWords} words • about {estimatedReadTime} min read</span>
+                <span className={plainContent ? "text-emerald-600" : "text-amber-500"}>
+                  {plainContent ? "Ready" : "Content required"}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -563,7 +769,7 @@ const BlogEditor = () => {
               
               {/* Category Pills */}
               <div className="flex flex-wrap gap-2 mt-4">
-                {CATEGORIES.slice(1).map((cat) => (
+                {CATEGORIES.map((cat) => (
                   <button
                     key={cat}
                     type="button"
@@ -614,7 +820,7 @@ const BlogEditor = () => {
                   <span className={`font-semibold ${
                     formData.isPublished ? "text-emerald-700" : "text-amber-700"
                   }`}>
-                    {formData.isPublished ? "Published" : "Draft"}
+                    {formData.isPublished ? "Published" : "Unpublished"}
                   </span>
                 </div>
                 {isEditing && (
@@ -637,6 +843,104 @@ const BlogEditor = () => {
                   You can change the status after saving
                 </p>
               )}
+            </div>
+          </div>
+
+          {/* Post Details Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                  <User className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-800">Post Details</h3>
+                  <p className="text-xs text-slate-500">Author and metadata</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 sm:p-5 space-y-3 text-sm">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  Author
+                </label>
+                <select
+                  value={formData.author}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, author: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 focus:bg-white transition-all"
+                  disabled={isSaving || admins.length === 0}
+                >
+                  <option value="">
+                    {getAuthorName(blog?.author)}
+                  </option>
+                  {admins.map((admin) => (
+                    <option key={admin._id || admin.id} value={admin._id || admin.id}>
+                      {getAuthorName(admin)} ({admin.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-slate-500">Email</span>
+                <span className="font-medium text-slate-800 text-right truncate max-w-[180px]">
+                  {selectedAuthor?.email || "Not set"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-slate-500">Created</span>
+                <span className="font-medium text-slate-800">
+                  {formatDate(blog?.createdAt)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-slate-500">Updated</span>
+                <span className="font-medium text-slate-800">
+                  {formatDate(blog?.updatedAt)}
+                </span>
+              </div>
+              <div className="pt-3 border-t border-slate-100">
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  URL Slug
+                </label>
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 break-all">
+                  /{blog?.slug || "generated-after-save"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Publish Checklist Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                  <Check className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-800">Publish Checklist</h3>
+                  <p className="text-xs text-slate-500">Required for a clean blog card</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 sm:p-5 space-y-3">
+              {qualityChecks.map((item) => (
+                <div key={item.label} className="flex items-center gap-3 text-sm">
+                  <span
+                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${
+                      item.passed
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </span>
+                  <span className={item.passed ? "text-slate-800" : "text-slate-500"}>
+                    {item.label}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -701,6 +1005,93 @@ const BlogEditor = () => {
           </div>
         </div>
       </div>
+
+      {showWebsitePreview && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
+          <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-4 px-4 sm:px-6 py-4 bg-white border-b border-slate-200">
+              <div>
+                <h2 className="font-semibold text-slate-900">Website Preview</h2>
+                <p className="text-xs text-slate-500">
+                  {formData.isPublished ? "Published post" : "Unpublished preview"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWebsitePreview(false)}
+                className="w-10 h-10 inline-flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <article className="bg-stone-50">
+              <div className="max-w-4xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
+                <div className="flex flex-wrap items-center gap-3 mb-5">
+                  <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-sm font-semibold">
+                    <Tag className="w-4 h-4" />
+                    {formData.category || "Category"}
+                  </span>
+                  <span className="text-sm text-slate-500">
+                    {formatDate(blog?.createdAt || new Date())}
+                  </span>
+                </div>
+
+                <h1 className="text-3xl sm:text-5xl font-bold text-slate-950 leading-tight">
+                  {formData.title || "Your blog title"}
+                </h1>
+
+                {formData.subTitle && (
+                  <p className="mt-5 text-lg sm:text-xl text-slate-600 leading-8">
+                    {formData.subTitle}
+                  </p>
+                )}
+
+                <div className="mt-6 flex items-center gap-3 text-sm text-slate-600">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-semibold">
+                    {getAuthorName(selectedAuthor).charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-800">
+                      {getAuthorName(selectedAuthor)}
+                    </p>
+                    <p>{selectedAuthor?.role || "Admin"}</p>
+                  </div>
+                </div>
+
+                <div className="mt-8 rounded-2xl overflow-hidden bg-slate-200 aspect-video">
+                  {previewImage ? (
+                    <img
+                      src={previewImage}
+                      alt={formData.title || "Blog featured"}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-500">
+                      Featured image preview
+                    </div>
+                  )}
+                </div>
+
+                {formData.paragraph && (
+                  <p className="mt-10 text-xl leading-9 text-slate-700">
+                    {formData.paragraph}
+                  </p>
+                )}
+
+                <div
+                  className="mt-8 prose prose-slate max-w-none prose-headings:text-slate-950 prose-p:leading-8 prose-img:rounded-xl prose-table:w-full prose-td:border prose-td:border-slate-300 prose-td:p-3 prose-th:border prose-th:border-slate-300 prose-th:p-3"
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      formData.description ||
+                      "<p>Your blog content preview will appear here.</p>",
+                  }}
+                />
+              </div>
+            </article>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -212,7 +212,7 @@ const ContactSettings = () => {
             {/* Map Link */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Google Maps Link
+                Google Maps Location Link
               </label>
               <div className="relative">
                 <ExternalLink className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -225,6 +225,27 @@ const ContactSettings = () => {
                   placeholder="https://maps.app.goo.gl/..."
                 />
               </div>
+            </div>
+
+            {/* Map Embed URL */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Google Maps Embed URL
+              </label>
+              <div className="relative">
+                <MapPin className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="url"
+                  name="contactInfo.mapEmbedUrl"
+                  value={settings.contactInfo?.mapEmbedUrl || ''}
+                  onChange={handleChange}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 focus:bg-white transition-all"
+                  placeholder="https://www.google.com/maps/embed?pb=..."
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Optional. If left empty, the website map is generated from the business address.
+              </p>
             </div>
           </div>
 
@@ -377,6 +398,10 @@ const ContactSettings = () => {
               <div className="flex items-center gap-3">
                 <MapPin className="w-4 h-4 text-emerald-600" />
                 <span className="text-sm text-slate-700">{settings.contactInfo?.address || 'Address not set'}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <ExternalLink className="w-4 h-4 text-emerald-600" />
+                <span className="text-sm text-slate-700 break-all">{settings.contactInfo?.mapLink || 'Google Maps link not set'}</span>
               </div>
             </div>
           </div>

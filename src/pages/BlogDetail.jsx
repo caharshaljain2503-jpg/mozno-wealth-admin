@@ -344,7 +344,7 @@ const BlogDetail = () => {
             <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
               Content
             </h2>
-            <div className="prose prose-slate max-w-none prose-headings:text-slate-800 prose-p:text-slate-600 prose-a:text-violet-600">
+            <div className="prose prose-slate max-w-none prose-headings:text-slate-800 prose-p:text-slate-600 prose-a:text-violet-600 prose-img:rounded-xl prose-table:w-full prose-table:border-collapse prose-th:border prose-th:border-slate-300 prose-th:bg-slate-100 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-td:border prose-td:border-slate-300 prose-td:px-3 prose-td:py-2">
               {blog.description ? (
                 <div dangerouslySetInnerHTML={{ __html: blog.description }} />
               ) : (

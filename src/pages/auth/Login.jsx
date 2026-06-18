@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { 
   Eye, 
   EyeOff, 
@@ -12,6 +12,10 @@ import {
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAdminLogin, useSendOtp, useVerifyOtp } from '../../api/hooks/useAdmin'
 import { useAuth } from '../../context/AuthContext'
+
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY
+const RECAPTCHA_SCRIPT_ID = 'google-recaptcha-script'
+const RECAPTCHA_ONLOAD_CALLBACK = '__moznoAdminRecaptchaOnLoad'
 
 function getRememberedCredentials() {
   if (typeof window === 'undefined') {
@@ -44,6 +48,9 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(
     () => getRememberedCredentials().rememberMe
   )
+  const [recaptchaToken, setRecaptchaToken] = useState('')
+  const [recaptchaReady, setRecaptchaReady] = useState(false)
+  const [recaptchaError, setRecaptchaError] = useState('')
   
   // State for 2FA
   const [step, setStep] = useState('login')
@@ -57,6 +64,8 @@ const Login = () => {
   
   // Refs to track if OTP has been sent
   const otpSentRef = useRef(false);
+  const recaptchaContainerRef = useRef(null);
+  const recaptchaWidgetIdRef = useRef(null);
 
   // Check if already authenticated
   useEffect(() => {
@@ -69,33 +78,24 @@ const Login = () => {
   // Login Mutation
   const loginMutation = useAdminLogin({
     onSuccess: (data) => {
-      if (data?.requiresOtp === false) {
-        login(data.token, rememberMe);
-        setSuccess('Login successful! Redirecting...');
-        setIsLoading(false);
-        setTimeout(() => {
-          navigate(from, { replace: true });
-        }, 700);
-        return;
-      }
-
-      setSuccess('Credentials verified. Sending verification code...');
+      const token = data?.token || data?.data?.token;
+      login(token, rememberMe);
+      setSuccess('Login successful! Redirecting...');
       setIsLoading(false);
 
-      // Send OTP immediately for accounts that require 2FA
-      sendOtpMutation.mutate({ email });
-
-      // Move to 2FA step after a short delay
+      // Two-factor verification is currently bypassed for direct admin access.
       setTimeout(() => {
-        setStep('2fa');
-        setCountdown(300);
-        otpSentRef.current = true;
-      }, 1000);
+        navigate(from, { replace: true });
+      }, 700);
     },
     onError: (error) => {
       // Show user-friendly error messages
-      if (error.response?.status === 401) {
+      if (error.response?.status === 400) {
+        setError(error.response?.data?.message || 'Security check failed. Please try again.');
+        resetRecaptcha();
+      } else if (error.response?.status === 401) {
         setError('Invalid email or password. Please try again.');
+        resetRecaptcha();
       } else if (error.response?.status === 404) {
         setError('Account not found. Please check your email.');
       } else if (error.response?.status === 429) {
@@ -157,6 +157,140 @@ const Login = () => {
       setIsLoading(false);
     }
   });
+
+  const resetRecaptcha = useCallback(() => {
+    setRecaptchaToken('');
+    if (
+      window.grecaptcha &&
+      recaptchaWidgetIdRef.current !== null
+    ) {
+      window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+    }
+  }, []);
+
+  const renderRecaptcha = useCallback(() => {
+    if (
+      !RECAPTCHA_SITE_KEY ||
+      !recaptchaContainerRef.current ||
+      !window.grecaptcha?.render ||
+      recaptchaWidgetIdRef.current !== null
+    ) {
+      return;
+    }
+
+    const mountWidget = () => {
+      if (!recaptchaContainerRef.current || recaptchaWidgetIdRef.current !== null) {
+        return;
+      }
+
+      try {
+        recaptchaWidgetIdRef.current = window.grecaptcha.render(
+          recaptchaContainerRef.current,
+          {
+            sitekey: RECAPTCHA_SITE_KEY,
+            theme: 'dark',
+            callback: (token) => {
+              setRecaptchaToken(token);
+              setRecaptchaError('');
+              setError('');
+            },
+            'expired-callback': () => {
+              setRecaptchaToken('');
+              setRecaptchaError('CAPTCHA expired. Please verify again.');
+            },
+            'error-callback': () => {
+              setRecaptchaToken('');
+              setRecaptchaError('CAPTCHA could not load. Please refresh the page.');
+            },
+          },
+        );
+        setRecaptchaReady(true);
+        setRecaptchaError('');
+      } catch (error) {
+        console.error('Failed to render Google CAPTCHA:', error);
+        setRecaptchaReady(false);
+        setRecaptchaError('Google CAPTCHA could not render. Please refresh the page.');
+      }
+    };
+
+    if (window.grecaptcha.ready) {
+      window.grecaptcha.ready(mountWidget);
+    } else {
+      mountWidget();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (step !== 'login') {
+      recaptchaWidgetIdRef.current = null;
+      setRecaptchaToken('');
+      setRecaptchaReady(false);
+      return;
+    }
+
+    if (!RECAPTCHA_SITE_KEY) {
+      setRecaptchaError('Google CAPTCHA site key is missing.');
+      return;
+    }
+
+    let timeoutId;
+
+    const handleScriptLoad = () => {
+      renderRecaptcha();
+    };
+
+    const handleScriptError = () => {
+      setRecaptchaReady(false);
+      setRecaptchaError('Google CAPTCHA failed to load. Please refresh the page.');
+    };
+
+    window[RECAPTCHA_ONLOAD_CALLBACK] = handleScriptLoad;
+
+    timeoutId = window.setTimeout(() => {
+      if (recaptchaWidgetIdRef.current === null) {
+        setRecaptchaReady(false);
+        setRecaptchaError(
+          'Google CAPTCHA is not loading. Check that the site key is reCAPTCHA v2 checkbox and allowed for localhost.',
+        );
+      }
+    }, 10000);
+
+    const existingScript = document.getElementById(RECAPTCHA_SCRIPT_ID);
+    if (window.grecaptcha?.render) {
+      handleScriptLoad();
+      return () => {
+        window.clearTimeout(timeoutId);
+        delete window[RECAPTCHA_ONLOAD_CALLBACK];
+      };
+    }
+
+    if (existingScript) {
+      existingScript.addEventListener('load', handleScriptLoad);
+      existingScript.addEventListener('error', handleScriptError);
+      return () => {
+        window.clearTimeout(timeoutId);
+        existingScript.removeEventListener('load', handleScriptLoad);
+        existingScript.removeEventListener('error', handleScriptError);
+        delete window[RECAPTCHA_ONLOAD_CALLBACK];
+      };
+    }
+
+    const script = document.createElement('script');
+    script.id = RECAPTCHA_SCRIPT_ID;
+    script.src = `https://www.google.com/recaptcha/api.js?onload=${RECAPTCHA_ONLOAD_CALLBACK}&render=explicit`;
+    script.async = true;
+    script.defer = true;
+    script.addEventListener('load', handleScriptLoad);
+    script.addEventListener('error', handleScriptError);
+    document.body.appendChild(script);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      script.removeEventListener('load', handleScriptLoad);
+      script.removeEventListener('error', handleScriptError);
+      delete window[RECAPTCHA_ONLOAD_CALLBACK];
+    };
+  }, [step, renderRecaptcha]);
 
   // Auto-send OTP when entering 2FA step if not sent yet
   useEffect(() => {
@@ -243,12 +377,28 @@ const Login = () => {
       setIsLoading(false);
       return;
     }
+
+    if (!RECAPTCHA_SITE_KEY) {
+      setError('Google CAPTCHA site key is missing.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (!recaptchaToken) {
+      setError('Please complete the Google CAPTCHA.');
+      setIsLoading(false);
+      return;
+    }
     
     // Reset OTP sent flag
     otpSentRef.current = false;
     
     // Call login API
-    loginMutation.mutate({ email, password });
+    loginMutation.mutate({
+      email,
+      password,
+      recaptchaToken,
+    });
   }
 
   // Handle OTP change
@@ -517,6 +667,26 @@ const Login = () => {
                 </div>
               </div>
 
+              {/* Captcha Field */}
+              <div className="space-y-1.5 sm:space-y-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-neutral-300">
+                  Security Check
+                </label>
+                <div className="min-h-[78px]">
+                  <div ref={recaptchaContainerRef} />
+                  {!recaptchaReady && !recaptchaError && (
+                    <div className="h-[78px] w-[304px] max-w-full rounded-md border border-gray-300 dark:border-neutral-800 flex items-center justify-center text-xs text-gray-500 dark:text-neutral-500">
+                      Loading Google CAPTCHA...
+                    </div>
+                  )}
+                </div>
+                {recaptchaError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    {recaptchaError}
+                  </p>
+                )}
+              </div>
+
               {/* Remember Me */}
               <div className="flex items-center gap-2.5 sm:gap-3">
                 <button
@@ -556,7 +726,7 @@ const Login = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isAnyLoading}
+                disabled={isAnyLoading || !recaptchaToken}
                 className="w-full h-10 sm:h-11 rounded-md text-sm font-medium
                   bg-black dark:bg-white 
                   text-white dark:text-black

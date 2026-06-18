@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Plus,
   Search,
@@ -8,22 +8,24 @@ import {
   Eye,
   Loader2,
   AlertCircle,
-  Calendar,
-  User,
   RefreshCw,
   FileText,
   Filter,
   MoreVertical,
   Tag,
   Clock,
-  ChevronRight,
+  Globe,
+  Lock,
   X,
   Sparkles,
 } from "lucide-react";
-import { useAdminBlogs, useDeleteBlog } from "../api/hooks/useBlogs";
+import {
+  useAdminBlogs,
+  useDeleteBlog,
+  useToggleBlogVisibility,
+} from "../api/hooks/useBlogs";
 
 const BlogList = () => {
-  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -40,6 +42,13 @@ const BlogList = () => {
     },
   });
 
+  const toggleVisibility = useToggleBlogVisibility({
+    onError: (error) => {
+      console.error("Failed to update blog status:", error);
+      alert(error?.message || "Failed to update blog status");
+    },
+  });
+
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
@@ -48,6 +57,12 @@ const BlogList = () => {
       day: "numeric",
       year: "numeric",
     });
+  };
+
+  const getAuthorName = (author) => {
+    if (!author || typeof author !== "object") return "Admin";
+    const fullName = [author.firstName, author.lastName].filter(Boolean).join(" ");
+    return fullName || author.name || author.email || "Admin";
   };
 
   const getStatusConfig = (isPublished) => {
@@ -61,7 +76,7 @@ const BlogList = () => {
       };
     }
     return {
-      text: "Draft",
+      text: "Unpublished",
       bg: "bg-amber-50",
       text_color: "text-amber-700",
       ring: "ring-1 ring-amber-200",
@@ -77,6 +92,11 @@ const BlogList = () => {
     setActiveDropdown(null);
   };
 
+  const handleToggleVisibility = (blogId) => {
+    toggleVisibility.mutate(blogId);
+    setActiveDropdown(null);
+  };
+
   const filteredBlogs = blogs.filter((blog) => {
     const matchesSearch = blog.title?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus =
@@ -89,7 +109,7 @@ const BlogList = () => {
   const stats = {
     total: blogs.length,
     published: blogs.filter((b) => b.isPublished).length,
-    drafts: blogs.filter((b) => !b.isPublished).length,
+    unpublished: blogs.filter((b) => !b.isPublished).length,
   };
 
   // Loading State
@@ -157,8 +177,8 @@ const BlogList = () => {
           shadow="shadow-emerald-500/20"
         />
         <StatCard
-          label="Drafts"
-          value={stats.drafts}
+          label="Unpublished"
+          value={stats.unpublished}
           gradient="from-amber-500 to-orange-600"
           shadow="shadow-amber-500/20"
         />
@@ -199,7 +219,11 @@ const BlogList = () => {
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                {filter === "all" ? "All Posts" : filter}
+                {filter === "all"
+                  ? "All Posts"
+                  : filter === "draft"
+                    ? "Unpublished"
+                    : filter}
               </button>
             ))}
           </div>
@@ -230,7 +254,11 @@ const BlogList = () => {
                     : "bg-slate-100 text-slate-600"
                 }`}
               >
-                {filter === "all" ? "All" : filter}
+                {filter === "all"
+                  ? "All"
+                  : filter === "draft"
+                    ? "Unpublished"
+                    : filter}
               </button>
             ))}
           </div>
@@ -294,11 +322,11 @@ const BlogList = () => {
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
                               <span className="text-white text-xs font-medium">
-                                {(blog.author?.name || "A").charAt(0).toUpperCase()}
+                                {getAuthorName(blog.author).charAt(0).toUpperCase()}
                               </span>
                             </div>
                             <span className="text-slate-600 text-sm">
-                              {blog.author?.name || "Admin"}
+                              {getAuthorName(blog.author)}
                             </span>
                           </div>
                         </td>
@@ -324,6 +352,25 @@ const BlogList = () => {
                             >
                               <Edit className="w-4 h-4" />
                             </Link>
+                            <button
+                              onClick={() => handleToggleVisibility(blog._id)}
+                              disabled={toggleVisibility.isPending}
+                              className={`p-2 rounded-lg transition-all disabled:opacity-50 ${
+                                blog.isPublished
+                                  ? "hover:bg-amber-100 text-slate-400 hover:text-amber-600"
+                                  : "hover:bg-emerald-100 text-slate-400 hover:text-emerald-600"
+                              }`}
+                              title={blog.isPublished ? "Unpublish" : "Publish"}
+                            >
+                              {toggleVisibility.isPending &&
+                              toggleVisibility.variables === blog._id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : blog.isPublished ? (
+                                <Lock className="w-4 h-4" />
+                              ) : (
+                                <Globe className="w-4 h-4" />
+                              )}
+                            </button>
                             <button
                               onClick={() => handleDelete(blog._id, blog.title)}
                               disabled={deleteBlog.isPending}
@@ -394,6 +441,21 @@ const BlogList = () => {
                                     Edit
                                   </Link>
                                   <button
+                                    onClick={() => handleToggleVisibility(blog._id)}
+                                    className={`flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 w-full ${
+                                      blog.isPublished
+                                        ? "text-amber-600"
+                                        : "text-emerald-600"
+                                    }`}
+                                  >
+                                    {blog.isPublished ? (
+                                      <Lock className="w-4 h-4" />
+                                    ) : (
+                                      <Globe className="w-4 h-4" />
+                                    )}
+                                    {blog.isPublished ? "Unpublish" : "Publish"}
+                                  </button>
+                                  <button
                                     onClick={() => handleDelete(blog._id, blog.title)}
                                     className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 w-full"
                                   >
@@ -421,11 +483,11 @@ const BlogList = () => {
                           <div className="flex items-center gap-2">
                             <div className="w-6 h-6 rounded-md bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
                               <span className="text-white text-[10px] font-medium">
-                                {(blog.author?.name || "A").charAt(0).toUpperCase()}
+                                {getAuthorName(blog.author).charAt(0).toUpperCase()}
                               </span>
                             </div>
                             <span className="text-xs text-slate-500">
-                              {blog.author?.name || "Admin"}
+                              {getAuthorName(blog.author)}
                             </span>
                           </div>
                           <span className="text-xs text-slate-400">
