@@ -388,34 +388,33 @@ const Dashboard = () => {
           
           <div className="h-64">
             {charts.dailyVisits?.length > 0 ? (
-              <div className="flex items-end justify-between h-full gap-1 px-2 pb-6 overflow-hidden">
-      {charts.dailyVisits.slice(-14).map((item, index) => {
-        const maxVisits = Math.max(...charts.dailyVisits.map((d) => d.visits || 0), 1);
-        const heightPercent = ((item.visits || 0) / maxVisits) * 100;
-        
-        return (
-          <div key={index} className="flex-1 flex flex-col items-center group cursor-pointer min-w-0">
-            {/* Tooltip */}
-            <div className="relative opacity-0 group-hover:opacity-100 transition-all duration-200 mb-1">
-              <div className="px-2 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg whitespace-nowrap shadow-xl">
-                {item.visits} visits
+              <div className="flex items-end justify-between h-52 gap-1 px-2">
+                {charts.dailyVisits.slice(-14).map((item, index) => {
+                  const maxVisits = Math.max(...charts.dailyVisits.map((d) => d.visits || 0), 1);
+                  const height = ((item.visits || 0) / maxVisits) * 180;
+                  
+                  return (
+                    <div key={index} className="flex-1 flex flex-col items-center group cursor-pointer">
+                      {/* Tooltip */}
+                      <div className="opacity-0 group-hover:opacity-100 transition-all duration-200 mb-2 px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-lg whitespace-nowrap shadow-xl">
+                        {item.visits} visits
+                        <div className="absolute left-1/2 -translate-x-1/2 top-full border-4 border-transparent border-t-slate-900" />
+                      </div>
+                      
+                      {/* Bar */}
+                      <div
+                        className="w-full bg-gradient-to-t from-violet-600 to-purple-500 rounded-t-lg transition-all duration-300 hover:from-violet-500 hover:to-purple-400 min-h-[4px] shadow-lg shadow-violet-500/20"
+                        style={{ height: `${Math.max(height, 4)}px` }}
+                      />
+                      
+                      {/* Label */}
+                      <span className="text-[10px] sm:text-xs text-slate-400 mt-2 font-medium">
+                        {item.day}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-            
-            {/* Bar */}
-            <div
-              className="w-full bg-gradient-to-t from-violet-600 to-purple-500 rounded-t-lg transition-all duration-300 hover:from-violet-500 hover:to-purple-400 shadow-lg shadow-violet-500/20"
-              style={{ height: `${Math.max(heightPercent, 2)}%` }}
-            />
-            
-            {/* Label */}
-            <span className="text-[9px] sm:text-[10px] text-slate-400 mt-1 font-medium truncate w-full text-center">
-              {item.day}
-            </span>
-          </div>
-        );
-      })}
-    </div>
             ) : (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
