@@ -198,7 +198,44 @@ const TextEditor = ({
     editable: !disabled,
     editorProps: {
       attributes: {
-        class: `prose prose-gray max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-gray-900 prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-p:leading-7 prose-p:text-gray-700 prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline prose-code:bg-gray-100 prose-code:text-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-transparent prose-pre:p-0 prose-img:rounded-lg prose-img:mx-auto prose-blockquote:border-l-4 prose-blockquote:border-blue-500/50 prose-blockquote:bg-gray-50 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:text-gray-600 focus:outline-none px-4 sm:px-6 py-4`,
+        class: `rich-text-content prose prose-gray max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-gray-900 prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-p:leading-7 prose-p:text-gray-700 prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline prose-code:bg-gray-100 prose-code:text-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-transparent prose-pre:p-0 prose-img:rounded-lg prose-img:mx-auto prose-blockquote:border-l-4 prose-blockquote:border-blue-500/50 prose-blockquote:bg-gray-50 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:rounded-r-lg prose-blockquote:text-gray-600 focus:outline-none px-4 sm:px-6 py-4`,
+      },
+      handlePaste: (view, event) => {
+        const isInsideList = Array.from(
+          { length: view.state.selection.$from.depth + 1 },
+          (_, depth) => view.state.selection.$from.node(depth).type.name,
+        ).includes("listItem");
+
+        if (!isInsideList || !event.clipboardData) return false;
+
+        const pastedText = event.clipboardData.getData("text/plain");
+        if (!pastedText) return false;
+
+        const listItems = pastedText
+          .split(/\r?\n/)
+          .map((line) =>
+            line
+              .replace(/^\s*(?:[-*•●▪◦]|\d+[.)])\s+/, "")
+              .trim(),
+          )
+          .filter(Boolean);
+
+        if (!listItems.length) return false;
+
+        event.preventDefault();
+
+        let chain = editor
+          .chain()
+          .focus()
+          .insertContent({ type: "text", text: listItems[0] });
+
+        listItems.slice(1).forEach((item) => {
+          chain = chain
+            .splitListItem("listItem")
+            .insertContent({ type: "text", text: item });
+        });
+
+        return chain.run();
       },
     },
     onUpdate: ({ editor }) => {
@@ -329,6 +366,7 @@ const TextEditor = ({
   }) => (
     <button
       type="button"
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       disabled={disabled}
       title={title}

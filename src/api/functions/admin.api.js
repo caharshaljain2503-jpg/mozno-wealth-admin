@@ -64,6 +64,11 @@ export const adminApi = {
     return response.data;
   },
 
+  updateProfile: async (data) => {
+    const response = await adminClient.put("/profile", data);
+    return response.data;
+  },
+
   changePassword: async (data) => {
     const response = await adminClient.put("/change-password", data);
     return response.data;

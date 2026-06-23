@@ -27,13 +27,14 @@ import {
 import {
   useAddBlog,
   useEditBlog,
+  useAdminBlogs,
   useAdminBlogById,
   useToggleBlogVisibility,
 } from "../api/hooks/useBlogs";
-import { useAdmins } from "../api/hooks/useAdmin";
+import { useAdminProfile, useAdmins } from "../api/hooks/useAdmin";
 import TextEditor from "../components/TextEditor";
 
-const CATEGORIES = [
+const SUGGESTED_CATEGORIES = [
   "Product Info",
   "Price Updates",
   "Technical Guides",
@@ -96,6 +97,9 @@ const BlogEditor = () => {
     description: "",
     category: "",
     author: "",
+    bylineMode: "profile",
+    bylineName: "",
+    bylineRole: "",
     isPublished: false,
     image: null,
   });
@@ -152,18 +156,51 @@ const BlogEditor = () => {
   } = useAdminBlogById(id, {
     enabled: isEditing,
   });
-  const { data: adminsResponse } = useAdmins({ limit: 100 });
-  const admins = adminsResponse?.data || [];
+  const { data: existingBlogs = [] } = useAdminBlogs();
+  const { data: currentAdmin } = useAdminProfile();
+  const { data: adminsResponse } = useAdmins({ limit: 100, status: "active" });
+  const admins = (adminsResponse?.data || []).filter(
+    (admin, index, list) =>
+      list.findIndex(
+        (candidate) =>
+          (candidate._id || candidate.id) === (admin._id || admin.id),
+      ) === index,
+  );
+  const authorOptions = [...admins];
+  if (
+    blog?.author &&
+    !authorOptions.some(
+      (admin) =>
+        (admin._id || admin.id) === (blog.author._id || blog.author.id),
+    )
+  ) {
+    authorOptions.push(blog.author);
+  }
+  const categorySuggestions = Array.from(
+    new Set([
+      ...SUGGESTED_CATEGORIES,
+      ...existingBlogs.map((existingBlog) => existingBlog.category).filter(Boolean),
+      formData.category,
+    ]),
+  ).filter(Boolean);
   const selectedAuthor =
     admins.find((admin) => (admin._id || admin.id) === formData.author) ||
-    blog?.author;
+    blog?.author ||
+    currentAdmin;
+  const displayAuthorName =
+    formData.bylineMode === "team"
+      ? formData.bylineName.trim() || "Team member"
+      : getAuthorName(selectedAuthor);
+  const displayAuthorRole =
+    formData.bylineMode === "team"
+      ? formData.bylineRole.trim() || "Contributor"
+      : selectedAuthor?.role || "Admin";
   const plainContent = stripHtml(formData.description);
   const articleText = [formData.paragraph, plainContent]
     .filter(Boolean)
     .join(" ")
     .trim();
   const contentWords = articleText ? articleText.split(/\s+/).length : 0;
-  const estimatedReadTime = Math.max(1, Math.ceil(contentWords / 180));
 
   useEffect(() => {
     if (blog && isEditing) {
@@ -175,6 +212,9 @@ const BlogEditor = () => {
         description: blog.description || "",
         category: blog.category || "",
         author: blog.author?._id || blog.author?.id || "",
+        bylineMode: blog.bylineName ? "team" : "profile",
+        bylineName: blog.bylineName || "",
+        bylineRole: blog.bylineRole || "",
         isPublished: blog.isPublished ?? false,
         image: null,
       }));
@@ -183,6 +223,15 @@ const BlogEditor = () => {
       }
     }
   }, [blog, isEditing]);
+
+  useEffect(() => {
+    if (isEditing || formData.author || !currentAdmin) return;
+
+    const currentAdminId = currentAdmin._id || currentAdmin.id;
+    if (currentAdminId) {
+      setFormData((prev) => ({ ...prev, author: currentAdminId }));
+    }
+  }, [currentAdmin, formData.author, isEditing]);
 
   // Handlers
   const handleInputChange = (e) => {
@@ -277,8 +326,16 @@ const BlogEditor = () => {
       alert("Please replace the placeholder/sample content before publishing.");
       return;
     }
-    if (!formData.category) {
+    if (!formData.category?.trim()) {
       alert("Category is required");
+      return;
+    }
+    if (formData.bylineMode === "team" && !formData.bylineName.trim()) {
+      alert("Team member name is required");
+      return;
+    }
+    if (formData.category.trim().length > 60) {
+      alert("Category must be 60 characters or fewer");
       return;
     }
     if (!isEditing && !formData.image && !previewImage) {
@@ -291,10 +348,18 @@ const BlogEditor = () => {
     formDataToSend.append("subTitle", formData.subTitle.trim());
     formDataToSend.append("paragraph", formData.paragraph.trim());
     formDataToSend.append("description", formData.description.trim());
-    formDataToSend.append("category", formData.category);
+    formDataToSend.append("category", formData.category.trim());
     if (formData.author) {
       formDataToSend.append("author", formData.author);
     }
+    formDataToSend.append(
+      "bylineName",
+      formData.bylineMode === "team" ? formData.bylineName.trim() : "",
+    );
+    formDataToSend.append(
+      "bylineRole",
+      formData.bylineMode === "team" ? formData.bylineRole.trim() : "",
+    );
     formDataToSend.append("isPublished", publish.toString());
     if (formData.image) {
       formDataToSend.append("image", formData.image);
@@ -334,7 +399,7 @@ const BlogEditor = () => {
     },
     {
       label: "Category selected",
-      passed: Boolean(formData.category),
+      passed: Boolean(formData.category.trim()),
     },
     {
       label: "Article body",
@@ -510,7 +575,7 @@ const BlogEditor = () => {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
         {/* Editor Column */}
         <div className="lg:col-span-2 space-y-6">
           {/* Title Card */}
@@ -666,7 +731,7 @@ const BlogEditor = () => {
                 disabled={isSaving}
               />
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                <span>{contentWords} words • about {estimatedReadTime} min read</span>
+                <span>{contentWords} words</span>
                 <span className={plainContent ? "text-emerald-600" : "text-amber-500"}>
                   {plainContent ? "Ready" : "Content required"}
                 </span>
@@ -676,7 +741,7 @@ const BlogEditor = () => {
         </div>
 
         {/* Sidebar Column */}
-        <div className="space-y-6">
+        <div className="blog-editor-sidebar space-y-6 lg:sticky lg:top-6 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-2">
           {/* Featured Image Card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
@@ -741,6 +806,66 @@ const BlogEditor = () => {
             </div>
           </div>
 
+          {/* Live Blog Card Preview */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
+                  <Eye className="w-5 h-5 text-violet-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-800">Live Preview</h3>
+                  <p className="text-xs text-slate-500">Updates while you write</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 sm:p-5">
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="aspect-[16/9] bg-gradient-to-br from-slate-100 to-slate-200">
+                  {previewImage ? (
+                    <img
+                      src={previewImage}
+                      alt={formData.title || "Blog preview"}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+                      <ImageIcon className="h-8 w-8" />
+                      <span className="text-xs font-medium">Featured image</span>
+                    </div>
+                  )}
+                </div>
+                <div className="p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <span className="max-w-[70%] truncate rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      {formData.category || "Category"}
+                    </span>
+                  </div>
+                  <h4 className="line-clamp-2 text-lg font-bold leading-snug text-slate-900">
+                    {formData.title || "Your blog title will appear here"}
+                  </h4>
+                  <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
+                    {formData.subTitle ||
+                      "Add a summary to preview how this post will look on the website."}
+                  </p>
+                  <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <span className="truncate text-xs font-medium text-slate-500">
+                      By {displayAuthorName}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowWebsitePreview(true)}
+                      className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-700"
+                    >
+                      Full preview
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Category Card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
@@ -755,21 +880,28 @@ const BlogEditor = () => {
               </div>
             </div>
             <div className="p-4 sm:p-5">
-              <select
+              <input
+                type="text"
+                list="blog-category-suggestions"
                 value={formData.category}
                 onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value }))}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 focus:bg-white transition-all appearance-none cursor-pointer"
+                placeholder="Type or select a category..."
+                maxLength={60}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 focus:bg-white transition-all"
                 disabled={isSaving}
-              >
-                <option value="">Select category...</option>
-                {CATEGORIES.map((cat) => (
+              />
+              <datalist id="blog-category-suggestions">
+                {categorySuggestions.map((cat) => (
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
-              </select>
+              </datalist>
+              <p className="mt-2 text-xs text-slate-500">
+                Enter a new category or choose an existing one.
+              </p>
               
               {/* Category Pills */}
               <div className="flex flex-wrap gap-2 mt-4">
-                {CATEGORIES.map((cat) => (
+                {categorySuggestions.map((cat) => (
                   <button
                     key={cat}
                     type="button"
@@ -864,28 +996,97 @@ const BlogEditor = () => {
                 <label className="block text-xs font-medium text-slate-500 mb-1">
                   Author
                 </label>
-                <select
-                  value={formData.author}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, author: e.target.value }))
-                  }
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 focus:bg-white transition-all"
-                  disabled={isSaving || admins.length === 0}
-                >
-                  <option value="">
-                    {getAuthorName(blog?.author)}
-                  </option>
-                  {admins.map((admin) => (
-                    <option key={admin._id || admin.id} value={admin._id || admin.id}>
-                      {getAuthorName(admin)} ({admin.email})
-                    </option>
-                  ))}
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({ ...prev, bylineMode: "profile" }))
+                    }
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                      formData.bylineMode === "profile"
+                        ? "border-violet-500 bg-violet-50 text-violet-700"
+                        : "border-slate-200 bg-white text-slate-600"
+                    }`}
+                  >
+                    Admin profile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({ ...prev, bylineMode: "team" }))
+                    }
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                      formData.bylineMode === "team"
+                        ? "border-violet-500 bg-violet-50 text-violet-700"
+                        : "border-slate-200 bg-white text-slate-600"
+                    }`}
+                  >
+                    Team member
+                  </button>
+                </div>
+
+                {formData.bylineMode === "profile" ? (
+                  <>
+                    {authorOptions.length > 1 ? (
+                      <select
+                        value={formData.author}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, author: e.target.value }))
+                        }
+                        className="mt-3 w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
+                        disabled={isSaving}
+                      >
+                        {authorOptions.map((admin) => (
+                          <option key={admin._id || admin.id} value={admin._id || admin.id}>
+                            {getAuthorName(admin)} ({admin.email})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="mt-3 w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800">
+                        {getAuthorName(selectedAuthor)}
+                      </div>
+                    )}
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      Uses an admin account as the public author.
+                    </p>
+                  </>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <input
+                      type="text"
+                      value={formData.bylineName}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, bylineName: e.target.value }))
+                      }
+                      placeholder="Team member name"
+                      maxLength={100}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
+                    />
+                    <input
+                      type="text"
+                      value={formData.bylineRole}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, bylineRole: e.target.value }))
+                      }
+                      placeholder="Role, e.g. Financial Analyst"
+                      maxLength={100}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Credits a team member without giving them admin access.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-between gap-4">
-                <span className="text-slate-500">Email</span>
+                <span className="text-slate-500">
+                  {formData.bylineMode === "team" ? "Role" : "Email"}
+                </span>
                 <span className="font-medium text-slate-800 text-right truncate max-w-[180px]">
-                  {selectedAuthor?.email || "Not set"}
+                  {formData.bylineMode === "team"
+                    ? displayAuthorRole
+                    : selectedAuthor?.email || "Not set"}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-4">
@@ -1049,13 +1250,13 @@ const BlogEditor = () => {
 
                 <div className="mt-6 flex items-center gap-3 text-sm text-slate-600">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-semibold">
-                    {getAuthorName(selectedAuthor).charAt(0).toUpperCase()}
+                    {displayAuthorName.charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <p className="font-semibold text-slate-800">
-                      {getAuthorName(selectedAuthor)}
+                      {displayAuthorName}
                     </p>
-                    <p>{selectedAuthor?.role || "Admin"}</p>
+                    <p>{displayAuthorRole}</p>
                   </div>
                 </div>
 
@@ -1080,7 +1281,7 @@ const BlogEditor = () => {
                 )}
 
                 <div
-                  className="mt-8 prose prose-slate max-w-none prose-headings:text-slate-950 prose-p:leading-8 prose-img:rounded-xl prose-table:w-full prose-td:border prose-td:border-slate-300 prose-td:p-3 prose-th:border prose-th:border-slate-300 prose-th:p-3"
+                  className="rich-text-content mt-8 prose prose-slate max-w-none prose-headings:text-slate-950 prose-p:leading-8 prose-img:rounded-xl prose-table:w-full prose-td:border prose-td:border-slate-300 prose-td:p-3 prose-th:border prose-th:border-slate-300 prose-th:p-3"
                   dangerouslySetInnerHTML={{
                     __html:
                       formData.description ||

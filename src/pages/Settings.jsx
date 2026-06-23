@@ -22,6 +22,10 @@ import {
   Mail,
   KeyRound,
 } from 'lucide-react';
+import {
+  useAdminProfile,
+  useUpdateAdminProfile,
+} from '../api/hooks/useAdmin';
 
 const Settings = () => {
   const [profile, setProfile] = useState({
@@ -30,7 +34,6 @@ const Settings = () => {
     email: '',
   });
 
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
@@ -50,31 +53,18 @@ const Settings = () => {
   const [verificationPassword, setVerificationPassword] = useState('');
   const avatarInputRef = useRef(null);
   const [theme, setTheme] = useState('light');
+  const { data: adminProfile, isLoading: profileLoading } = useAdminProfile();
+  const updateProfile = useUpdateAdminProfile();
 
   useEffect(() => {
-    fetchAdminProfile();
-  }, []);
-
-  const fetchAdminProfile = async () => {
-    try {
-      setLoading(true);
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      const mockProfile = {
-        firstName: 'John',
-        lastName: 'Doe',
-        email: 'admin@mozno.in',
-        avatar: '',
-      };
-
-      setProfile(mockProfile);
-      setAvatarPreview(mockProfile.avatar);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (!adminProfile) return;
+    setProfile({
+      firstName: adminProfile.firstName || '',
+      lastName: adminProfile.lastName || '',
+      email: adminProfile.email || '',
+    });
+    setAvatarPreview(adminProfile.avatar || '');
+  }, [adminProfile]);
 
   const handleProfileChange = (e) => {
     const { name, value } = e.target;
@@ -132,19 +122,17 @@ const Settings = () => {
 
     try {
       setSaving(true);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      console.log('Profile saved:', {
-        ...profile,
-        avatar: avatarFile ? 'New avatar uploaded' : 'No avatar change',
-        verificationPassword: '***',
+      await updateProfile.mutateAsync({
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        email: profile.email,
+        currentPassword: verificationPassword,
       });
 
-      alert('Profile updated successfully');
       setVerificationPassword('');
     } catch (error) {
       console.error('Error updating profile:', error);
-      alert('An error occurred while updating profile');
+      alert(error.response?.data?.message || 'An error occurred while updating profile');
     } finally {
       setSaving(false);
     }
@@ -207,7 +195,7 @@ const Settings = () => {
   const passwordStrength = getPasswordStrength(passwordData.newPassword);
 
   // Loading State
-  if (loading) {
+  if (profileLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">

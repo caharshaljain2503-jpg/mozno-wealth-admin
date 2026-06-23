@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import {
   Calendar,
-  Clock,
   User,
   Tag,
   Eye,
@@ -78,14 +77,6 @@ const BlogDetail = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const calculateReadTime = (content) => {
-    if (!content) return '1 min';
-    const text = content.replace(/<[^>]*>/g, '');
-    const words = text.split(/\s+/).length;
-    const minutes = Math.ceil(words / 200);
-    return `${minutes} min read`;
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -96,6 +87,11 @@ const BlogDetail = () => {
   };
 
   const getAuthorName = () => {
+    if (blog?.bylineName) return blog.bylineName;
+    const fullName = [blog?.author?.firstName, blog?.author?.lastName]
+      .filter(Boolean)
+      .join(' ');
+    if (fullName) return fullName;
     if (blog?.author?.name) return blog.author.name;
     if (blog?.author?.username) return blog.author.username;
     if (blog?.author?.email) return blog.author.email.split('@')[0];
@@ -328,10 +324,6 @@ const BlogDetail = () => {
                   {formatDate(blog.createdAt)}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4" />
-                  {calculateReadTime(blog.description)}
-                </div>
-                <div className="flex items-center gap-1.5">
                   <User className="w-4 h-4" />
                   {getAuthorName()}
                 </div>
@@ -344,7 +336,7 @@ const BlogDetail = () => {
             <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
               Content
             </h2>
-            <div className="prose prose-slate max-w-none prose-headings:text-slate-800 prose-p:text-slate-600 prose-a:text-violet-600 prose-img:rounded-xl prose-table:w-full prose-table:border-collapse prose-th:border prose-th:border-slate-300 prose-th:bg-slate-100 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-td:border prose-td:border-slate-300 prose-td:px-3 prose-td:py-2">
+            <div className="rich-text-content prose prose-slate max-w-none prose-headings:text-slate-800 prose-p:text-slate-600 prose-a:text-violet-600 prose-img:rounded-xl prose-table:w-full prose-table:border-collapse prose-th:border prose-th:border-slate-300 prose-th:bg-slate-100 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-td:border prose-td:border-slate-300 prose-td:px-3 prose-td:py-2">
               {blog.description ? (
                 <div dangerouslySetInnerHTML={{ __html: blog.description }} />
               ) : (
@@ -396,10 +388,6 @@ const BlogDetail = () => {
               <div className="flex items-center justify-between py-2 border-b border-slate-100">
                 <span className="text-sm text-slate-500">Category</span>
                 <span className="text-sm font-medium text-slate-700">{blog.category || 'Uncategorized'}</span>
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm text-slate-500">Read Time</span>
-                <span className="text-sm font-medium text-slate-700">{calculateReadTime(blog.description)}</span>
               </div>
             </div>
           </div>

@@ -322,11 +322,11 @@ const BlogList = () => {
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
                               <span className="text-white text-xs font-medium">
-                                {getAuthorName(blog.author).charAt(0).toUpperCase()}
+                                {(blog.bylineName || getAuthorName(blog.author)).charAt(0).toUpperCase()}
                               </span>
                             </div>
                             <span className="text-slate-600 text-sm">
-                              {getAuthorName(blog.author)}
+                              {blog.bylineName || getAuthorName(blog.author)}
                             </span>
                           </div>
                         </td>
@@ -483,11 +483,11 @@ const BlogList = () => {
                           <div className="flex items-center gap-2">
                             <div className="w-6 h-6 rounded-md bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
                               <span className="text-white text-[10px] font-medium">
-                                {getAuthorName(blog.author).charAt(0).toUpperCase()}
+                                {(blog.bylineName || getAuthorName(blog.author)).charAt(0).toUpperCase()}
                               </span>
                             </div>
                             <span className="text-xs text-slate-500">
-                              {getAuthorName(blog.author)}
+                              {blog.bylineName || getAuthorName(blog.author)}
                             </span>
                           </div>
                           <span className="text-xs text-slate-400">

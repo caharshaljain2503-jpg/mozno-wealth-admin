@@ -71,6 +71,16 @@ const ContactSettings = () => {
     updateSettings.mutate(settings);
   };
 
+  const placeholders = [
+    '{{assessmentType}}',
+    '{{profileLabel}}',
+    '{{totalScore}}',
+    '{{name}}',
+    '{{email}}',
+    '{{phone}}',
+    '{{answers}}',
+  ];
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -370,6 +380,52 @@ const ContactSettings = () => {
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Assessment Email Content */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
+              <Mail className="w-4 h-4 text-violet-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Assessment Email Content</h2>
+              <p className="text-sm text-slate-500">
+                Edit the message included in Risk Profiling and Financial Health submission emails
+              </p>
+            </div>
+          </div>
+
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            Email message
+          </label>
+          <textarea
+            name="assessmentEmailContent"
+            value={settings.assessmentEmailContent || ''}
+            onChange={handleChange}
+            rows={16}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 focus:bg-white transition-all resize-y font-mono text-sm leading-6"
+            placeholder="Enter the assessment email content..."
+          />
+
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+              Available placeholders
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {placeholders.map((placeholder) => (
+                <code
+                  key={placeholder}
+                  className="px-2.5 py-1.5 bg-violet-50 text-violet-700 border border-violet-200 rounded-lg text-xs"
+                >
+                  {placeholder}
+                </code>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              Keep <code className="text-violet-700">{'{{answers}}'}</code> wherever the complete questionnaire answers should appear.
+            </p>
           </div>
         </div>
 

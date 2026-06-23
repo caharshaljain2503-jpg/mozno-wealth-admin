@@ -72,6 +72,23 @@ export const useAdminProfile = (options = {}) => {
   });
 };
 
+export const useUpdateAdminProfile = (options = {}) => {
+  const queryClient = useQueryClient();
+  const { onSuccess, ...mutationOptions } = options;
+
+  return useMutation({
+    mutationFn: (data) => adminApi.updateProfile(data),
+    onSuccess: (response, variables, context) => {
+      queryClient.setQueryData(["admin", "profile"], response.data);
+      queryClient.invalidateQueries({ queryKey: adminKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["blogs"] });
+      toast.success(response.message || "Profile updated successfully");
+      onSuccess?.(response, variables, context);
+    },
+    ...mutationOptions,
+  });
+};
+
 // ==================== QUERY KEYS ====================
 
 export const adminKeys = {
